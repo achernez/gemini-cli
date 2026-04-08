@@ -8,23 +8,19 @@ import { act } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '../../test-utils/render.js';
 import { useLogger } from './useLogger.js';
-import {
-  sessionId as globalSessionId,
-  Logger,
-  type Storage,
-  type Config,
-} from '@google/gemini-cli-core';
+import { Logger, type Storage, type Config } from '@google/gemini-cli-core';
 import { ConfigContext } from '../contexts/ConfigContext.js';
 import type React from 'react';
 
 let deferredInit: { resolve: (val?: unknown) => void };
 
-// Mock Logger
+// Mock Logger and createSessionId
 vi.mock('@google/gemini-cli-core', async (importOriginal) => {
   const actual =
     await importOriginal<typeof import('@google/gemini-cli-core')>();
   return {
     ...actual,
+    createSessionId: vi.fn().mockReturnValue('mocked-new-session-id'),
     Logger: vi.fn().mockImplementation((id: string) => ({
       initialize: vi.fn().mockImplementation(
         () =>
@@ -47,7 +43,7 @@ describe('useLogger', () => {
     vi.clearAllMocks();
   });
 
-  it('should initialize with the global sessionId by default', async () => {
+  it('should initialize with a new createSessionId by default', async () => {
     const { result } = await renderHook(() => useLogger(mockStorage));
 
     expect(result.current).toBeNull();
@@ -57,7 +53,7 @@ describe('useLogger', () => {
     });
 
     expect(result.current).not.toBeNull();
-    expect(Logger).toHaveBeenCalledWith(globalSessionId, mockStorage);
+    expect(Logger).toHaveBeenCalledWith('mocked-new-session-id', mockStorage);
   });
 
   it('should initialize with the active sessionId from ConfigContext when available', async () => {

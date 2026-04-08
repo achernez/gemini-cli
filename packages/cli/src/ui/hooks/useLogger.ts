@@ -5,11 +5,7 @@
  */
 
 import { useState, useEffect, useContext } from 'react';
-import {
-  sessionId as globalSessionId,
-  Logger,
-  type Storage,
-} from '@google/gemini-cli-core';
+import { createSessionId, Logger, type Storage } from '@google/gemini-cli-core';
 import { ConfigContext } from '../contexts/ConfigContext.js';
 
 /**
@@ -20,7 +16,7 @@ export const useLogger = (storage: Storage): Logger | null => {
   const config = useContext(ConfigContext);
 
   useEffect(() => {
-    const activeSessionId = config?.getSessionId() ?? globalSessionId;
+    const activeSessionId = config?.getSessionId() ?? createSessionId();
     const newLogger = new Logger(activeSessionId, storage);
 
     /**
