@@ -36,9 +36,11 @@ import {
   type ConfirmationRequest,
   type PermissionConfirmationRequest,
   type QuotaStats,
+  MessageType,
+  StreamingState,
+  type HistoryItemInfo,
 } from './types.js';
 import { checkPermissions } from './hooks/atCommandProcessor.js';
-import { MessageType, StreamingState } from './types.js';
 import { ToolActionsProvider } from './contexts/ToolActionsContext.js';
 import { MouseProvider } from './contexts/MouseContext.js';
 import { ScrollProvider } from './contexts/ScrollProvider.js';
@@ -51,6 +53,7 @@ import {
   type UserTierId,
   type GeminiUserTier,
   type UserFeedbackPayload,
+  type HookSystemMessagePayload,
   type AgentDefinition,
   type ApprovalMode,
   IdeClient,
@@ -195,6 +198,8 @@ import {
   APPROVAL_MODE_REVEAL_DURATION_MS,
 } from './hooks/useVisibilityToggle.js';
 import { useKeyMatchers } from './hooks/useKeyMatchers.js';
+
+import { InputContext } from './contexts/InputContext.js';
 
 /**
  * The fraction of the terminal width to allocate to the shell.
@@ -2131,7 +2136,19 @@ Logging in with Google... Restarting Gemini CLI to continue.
       }
     };
 
+    const handleHookSystemMessage = (payload: HookSystemMessagePayload) => {
+      historyManager.addItem(
+        {
+          type: MessageType.INFO,
+          text: payload.message,
+          source: payload.hookName,
+        } as HistoryItemInfo,
+        Date.now(),
+      );
+    };
+
     coreEvents.on(CoreEvent.UserFeedback, handleUserFeedback);
+    coreEvents.on(CoreEvent.HookSystemMessage, handleHookSystemMessage);
 
     // Flush any messages that happened during startup before this component
     // mounted.
@@ -2139,6 +2156,7 @@ Logging in with Google... Restarting Gemini CLI to continue.
 
     return () => {
       coreEvents.off(CoreEvent.UserFeedback, handleUserFeedback);
+      coreEvents.off(CoreEvent.HookSystemMessage, handleHookSystemMessage);
     };
   }, [historyManager]);
 
@@ -2350,6 +2368,27 @@ Logging in with Google... Restarting Gemini CLI to continue.
     };
   }, [config, refreshStatic]);
 
+  const inputState = useMemo(
+    () => ({
+      buffer,
+      userMessages: inputHistory,
+      shellModeActive,
+      showEscapePrompt,
+      copyModeEnabled,
+      inputWidth,
+      suggestionsWidth,
+    }),
+    [
+      buffer,
+      inputHistory,
+      shellModeActive,
+      showEscapePrompt,
+      copyModeEnabled,
+      inputWidth,
+      suggestionsWidth,
+    ],
+  );
+
   const uiState: UIState = useMemo(
     () => ({
       history: historyManager.history,
@@ -2393,11 +2432,6 @@ Logging in with Google... Restarting Gemini CLI to continue.
       initError,
       pendingGeminiHistoryItems,
       thought,
-      shellModeActive,
-      userMessages: inputHistory,
-      buffer,
-      inputWidth,
-      suggestionsWidth,
       isInputActive,
       isResuming,
       shouldShowIdePrompt,
@@ -2413,7 +2447,6 @@ Logging in with Google... Restarting Gemini CLI to continue.
       renderMarkdown,
       ctrlCPressedOnce: ctrlCPressCount >= 1,
       ctrlDPressedOnce: ctrlDPressCount >= 1,
-      showEscapePrompt,
       shortcutsHelpVisible,
       cleanUiDetailsVisible,
       isFocused,
@@ -2465,7 +2498,6 @@ Logging in with Google... Restarting Gemini CLI to continue.
       embeddedShellFocused,
       showDebugProfiler,
       customDialog,
-      copyModeEnabled,
       transientMessage,
       bannerData,
       bannerVisible,
@@ -2520,11 +2552,6 @@ Logging in with Google... Restarting Gemini CLI to continue.
       initError,
       pendingGeminiHistoryItems,
       thought,
-      shellModeActive,
-      inputHistory,
-      buffer,
-      inputWidth,
-      suggestionsWidth,
       isInputActive,
       isResuming,
       shouldShowIdePrompt,
@@ -2540,7 +2567,6 @@ Logging in with Google... Restarting Gemini CLI to continue.
       renderMarkdown,
       ctrlCPressCount,
       ctrlDPressCount,
-      showEscapePrompt,
       shortcutsHelpVisible,
       cleanUiDetailsVisible,
       isFocused,
@@ -2592,7 +2618,6 @@ Logging in with Google... Restarting Gemini CLI to continue.
       customDialog,
       apiKeyDefaultValue,
       authState,
-      copyModeEnabled,
       transientMessage,
       bannerData,
       bannerVisible,
@@ -2779,32 +2804,34 @@ Logging in with Google... Restarting Gemini CLI to continue.
 
   return (
     <UIStateContext.Provider value={uiState}>
-      <UIActionsContext.Provider value={uiActions}>
-        <ConfigContext.Provider value={config}>
-          <AppContext.Provider
-            value={{
-              version: props.version,
-              startupWarnings: props.startupWarnings || [],
-            }}
-          >
-            <ToolActionsProvider
-              config={config}
-              toolCalls={allToolCalls}
-              isExpanded={isExpanded}
-              toggleExpansion={toggleExpansion}
-              toggleAllExpansion={toggleAllExpansion}
+      <InputContext.Provider value={inputState}>
+        <UIActionsContext.Provider value={uiActions}>
+          <ConfigContext.Provider value={config}>
+            <AppContext.Provider
+              value={{
+                version: props.version,
+                startupWarnings: props.startupWarnings || [],
+              }}
             >
-              <ShellFocusContext.Provider value={isFocused}>
-                <MouseProvider mouseEventsEnabled={mouseMode}>
-                  <ScrollProvider>
-                    <App key={`app-${forceRerenderKey}`} />
-                  </ScrollProvider>
-                </MouseProvider>
-              </ShellFocusContext.Provider>
-            </ToolActionsProvider>
-          </AppContext.Provider>
-        </ConfigContext.Provider>
-      </UIActionsContext.Provider>
+              <ToolActionsProvider
+                config={config}
+                toolCalls={allToolCalls}
+                isExpanded={isExpanded}
+                toggleExpansion={toggleExpansion}
+                toggleAllExpansion={toggleAllExpansion}
+              >
+                <ShellFocusContext.Provider value={isFocused}>
+                  <MouseProvider mouseEventsEnabled={mouseMode}>
+                    <ScrollProvider>
+                      <App key={`app-${forceRerenderKey}`} />
+                    </ScrollProvider>
+                  </MouseProvider>
+                </ShellFocusContext.Provider>
+              </ToolActionsProvider>
+            </AppContext.Provider>
+          </ConfigContext.Provider>
+        </UIActionsContext.Provider>
+      </InputContext.Provider>
     </UIStateContext.Provider>
   );
 };
